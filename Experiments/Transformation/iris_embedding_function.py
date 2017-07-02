@@ -30,8 +30,19 @@ if __name__ == "__main__":
     # Small dataset. Iterations are very fast, we can afford more
     y = dTSNE.fit(X, verbose=2, optimizer_kwargs={'momentum': 0.8, 'n_iter' : 3000}, random_seed=1)
     embedder = dTSNE.generate_embedding_function()
+    embedder2 = dTSNE.generate_embedding_function(embedding_function_type='weighted-inverse-distance')
+    embedder3 = dTSNE.generate_embedding_function(embedding_function_type='weighted-inverse-distance',
+                                                  function_kwargs={'power' : 0.5})
+    embedder4 = dTSNE.generate_embedding_function(embedding_function_type='weighted-inverse-distance',
+                                                  function_kwargs={'power' : 2})
     y2 = embedder(X, verbose=2)
+    y3 = embedder2(X, verbose=2)
+    y4 = embedder3(X, verbose=2)
+    y5 = embedder4(X, verbose=2)
     print("Mean square error between y1 and y2: ", np.mean(np.sum((y-y2)**2, axis=1)))
+    print("Mean square error between y1 and y3: ", np.mean(np.sum((y-y3)**2, axis=1)))
+    print("Mean square error between y1 and y4: ", np.mean(np.sum((y-y4)**2, axis=1)))
+    print("Mean square error between y1 and y4: ", np.mean(np.sum((y-y5)**2, axis=1)))
     color_list = ['blue','orange','green']
 
     plt.gcf().set_size_inches(10, 10)
@@ -41,6 +52,9 @@ if __name__ == "__main__":
         legend_list.append(str(data.target_names[l]))
     for l in set(sorted(labels)):
         plt.scatter(y2[labels == l, 0], y2[labels == l, 1], c=color_list[l], marker='v')
-        legend_list.append(str(data.target_names[l])+" embedded")
+        legend_list.append(str(data.target_names[l])+" embedded (polynmial)")
+    for l in set(sorted(labels)):
+        plt.scatter(y3[labels == l, 0], y3[labels == l, 1], c=color_list[l], marker='x')
+        legend_list.append(str(data.target_names[l]) + " embedded (weights)")
     plt.legend(legend_list)
     plt.show()

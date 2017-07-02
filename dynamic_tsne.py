@@ -538,6 +538,12 @@ class DynamicTSNE:
             Interpolates each Y dimension separately. If you pass one of the known Xi (used for fitting), it is
             guaranteed to return corresponding Yi. If there are 2 similar fitted X, that correspond to different Ys,
             any Y can be picked. Smooth, if distance function is smooth (looks like, but I need to double-check).
+
+            'weighted-inverse-distance': weighted average of Yi-s, where weights are inversely proportional to distance
+            between X and Xi sample. If you pass one of the known Xi (used for fitting), it is guaranteed to return
+            corresponding Yi. Function_kwargs can contain 'power' - weights will be proportional to inverse
+            distances^power (default - 1.0). Negative power is not recommended.
+
         :param function_kwargs: Parameters of embedding function (if applicable).
         :return: Embedding function, which accepts NxK array (K - original number of dimensions). Returns NxD embedded
         array (D is usually 2). Also accepts verbose parameter for logging level.
@@ -548,7 +554,7 @@ class DynamicTSNE:
         if embedding_function_type is None or embedding_function_type == 'default':
             embedding_function_type = 'makeshift-lagrange-norm'
 
-        if embedding_function_type is None:
+        if function_kwargs is None:
             function_kwargs = {}
 
         if embedding_function_type == 'makeshift-lagrange-norm':
@@ -560,14 +566,40 @@ class DynamicTSNE:
                 x = np.array(x).reshape((-1,self.X.shape[1]))
                 y = np.zeros((len(x), self.n_embedded_dimensions))
                 for k in range(x.shape[0]): # For each of k requested points
-                    if verbose>=2:
-                        print("Embedding sample ",k)
+                    if verbose >= 2:
+                        print("makeshift-lagrange-norm: Embedding sample ",k)
                     for i in range(self.X.shape[0]): # Summing over all original Y-s
                         coef = 1.0
                         for j in range(self.X.shape[0]):
                             if i != j:
                                 coef *= self.get_distance(x[k, :],self.X[j, :])/d[i, j]
                         y[k, :] += coef * self.Y[i, :]
+                return y
+
+            return resulting_embedding_function
+        elif embedding_function_type == 'weighted-inverse-distance':
+            power = function_kwargs.get('power', 1.0)
+
+            def resulting_embedding_function(x, verbose=0):
+                x = np.array(x).reshape((-1,self.X.shape[1]))
+                y = np.zeros((len(x), self.n_embedded_dimensions))
+                for k in range(x.shape[0]):
+                    found = False
+                    if verbose >= 2:
+                        print("weighted-inverse-distance (power", power, "): Embedding sample ", k)
+                    distances = np.zeros(self.X.shape[0])
+                    for j in range(len(self.X)):
+                        distances[j] = self.get_distance(x[k, :], self.X[j, :])
+                        if distances[j] == 0:
+                            y[k, :] = self.Y[j, :]
+                            if verbose >= 2:
+                                print("Exact match on sample", j)
+                            found = True
+                            break
+                    if not found:
+                        weights = 1/distances**power
+                        weights = weights/np.sum(weights)
+                        y[k,:] = weights.dot(self.Y)
                 return y
 
             return resulting_embedding_function

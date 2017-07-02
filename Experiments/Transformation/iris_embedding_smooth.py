@@ -2,7 +2,7 @@
 # License: BSD 3 clause (C) 2017
 
 # Fitting iris dataset (from sklearn) Generating embedding function and using it to visualize smooth transition from
-# one value to another.
+# one value to another. Comparing to embedding_close, explores way more options, different transformations.
 
 import sys
 import os
@@ -29,7 +29,8 @@ if __name__ == "__main__":
     dTSNE = dynamic_tsne.DynamicTSNE(perplexity=20)
     # Small dataset. Iterations are very fast, we can afford more
     y = dTSNE.fit(X, verbose=2, optimizer_kwargs={'momentum': 0.8, 'n_iter' : 3000}, random_seed=1)
-    embedder = dTSNE.generate_embedding_function()
+    embedder = dTSNE.generate_embedding_function(embedding_function_type='makeshift-lagrange-norm')
+    embedder_weighted = dTSNE.generate_embedding_function(embedding_function_type='weighted-inverse-distance')
     start_index = 0
     end_index = 100
     steps = 100
@@ -39,6 +40,7 @@ if __name__ == "__main__":
     y3 = dTSNE.transform(Xtransition, y='closest', verbose=2, random_seed=1)
     y4 = dTSNE.transform(Xtransition, y='random', verbose=2, random_seed=1)
     y5 = dTSNE.transform(Xtransition, y=ytransition, verbose=2, random_seed=1)
+    y6 = embedder_weighted(Xtransition, verbose=2)
     color_list = ['blue','orange','green']
 
     plt.gcf().set_size_inches(10, 10)
@@ -58,6 +60,8 @@ if __name__ == "__main__":
     plt.scatter(y4[:, 0], y4[:, 1], c='brown',marker='x')
     plt.plot(y5[:, 0], y5[:, 1], color='purple')
     plt.scatter(y5[:, 0], y5[:, 1], c='purple',marker='x')
+    plt.plot(y6[:, 0], y6[:, 1], color='cyan')
+    plt.scatter(y6[:, 0], y6[:, 1], c='cyan',marker='x')
     plt.legend(legend_list)
     plt.xlim([np.min(y[:, 0])-20, np.max(y[:, 0])+20])
     plt.ylim([np.min(y[:, 1])-20, np.max(y[:, 1])+20])
