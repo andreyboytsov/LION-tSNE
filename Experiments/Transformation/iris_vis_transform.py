@@ -29,8 +29,16 @@ if __name__ == "__main__":
     dTSNE = dynamic_tsne.DynamicTSNE(perplexity=20)
     # Small dataset. Iterations are very fast, we can afford more
     y = dTSNE.fit(X, verbose=2, optimizer_kwargs={'momentum': 0.8, 'n_iter' : 3000}, random_seed=1)
-    y2 = dTSNE.transform(X_for_transformation, verbose=2, optimizer_kwargs={'momentum': 0.8, 'n_iter' : 3000},
-                         random_seed=1)
+    # Option 1. Start with random values
+    # starting_y = None
+    # Option 2. Start with Ys that corresponded to closest original Xs
+    # starting_y = 'closest'
+    # Option 3. Start with a center of class. Only for testing, it won't be available in training.
+    starting_y = np.zeros((len(labels2), 2))
+    for i in range(len(starting_y)):
+        starting_y[i,:] = np.mean(y[labels == labels2[i], :], axis=0)
+    y2 = dTSNE.transform(X_for_transformation, y=starting_y, verbose=2,
+                         optimizer_kwargs={'momentum': 0.8, 'n_iter': 3000}, random_seed=1)
 
     color_list = ['blue','orange','green']
 

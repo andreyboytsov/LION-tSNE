@@ -366,7 +366,10 @@ class DynamicTSNE:
         Transforms the data using existing embedding, but does not save those data for further reference.
         :param x:
         :param y: embeddings to start with. If X is a small update of existing data, it might make sense to start from
-        existing embeddings.
+        existing embeddings. Acceptable inputs:
+            Any 2D array of N by n_embedded_dimensions - exact values of Y to start gradient descent with
+            'closest' - start with Y corresponding to closest original X value
+            None (default) or 'random' - start at random
         :param method: Method for finding minimum KL divergence. Supported methods:
             'gd_momentum' (default) - gradient descent with momentum (see reference [1]).
         TODO For now no other method is supported
@@ -397,6 +400,11 @@ class DynamicTSNE:
         d_new = self.distance_function(x_merged)
         if len(d_new.shape) == 1 or d_new.shape[1] != d_new.shape[0]:  # If it is scipy-distance-style array
             d_new = distance.squareform(d_new)  # distance metrics, now surely NxN
+        # TODO or shall we keep sigmas of existing? Recalculating sigma will keep perplexity. Perplexity is
+        # TODO number of neighbors. With new unrelated data number of parents will increase.
+        # TODO So, keep old sigmas for old values? Think of it. Preferably, make configurable with good defaults.
+        # TODO Imagine transforming the same training data. Expect them to stay. Think from that perspective.
+        # TODO If we recalculate ALL sigmas, won't happen.
         p_new, _ = get_p_and_sigma(d_new, self.perplexity, verbose=verbose)
 
         # Step 2. Run gradient descent with new P and sigmas
@@ -408,7 +416,20 @@ class DynamicTSNE:
             early_exaggeration = optimizer_kwargs.pop('early_exaggeration', 4.0)
             early_exaggeration_iters = optimizer_kwargs.pop('early_exaggeration_iters', 100)
 
-            new_y = np.concatenate([self.Y, np.random.randn(x.shape[0], self.n_embedded_dimensions)], axis=0)
+            if y is None or (type(y) == str and y == 'random'): # Type check avoids some warnings
+                y_start = np.random.randn(x.shape[0], self.n_embedded_dimensions)
+            elif np.array(y).shape == (x.shape[0], self.n_embedded_dimensions):
+                y_start = np.array(y).copy()
+            elif y == 'closest':
+                # We already got distance function. Let's use it
+                # Index 0 - number of original X, index 1 - number of transformed X.
+                d_considered = d_new[:len(self.X), len(self.X):]
+                min_y_index = np.argmin(d_considered, axis=0)
+                y_start = self.Y[min_y_index, :]
+            else:
+                raise ValueError("Could not initialize Y. Method not recognized.")
+
+            new_y = np.concatenate([self.Y, y_start], axis=0)
             new_y = new_y.reshape((-1,))
 
             it = 0
