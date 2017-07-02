@@ -9,7 +9,7 @@ from sklearn.datasets import load_digits
 import matplotlib.pyplot as plt
 
 # Importing from parent directory
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 import dynamic_tsne
 
 if __name__ == "__main__":

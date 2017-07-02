@@ -31,6 +31,8 @@ from scipy import linalg
 # TODO Random seeds for reproducibility
 # TODO Different optimization methods for sigma and KL divergence
 
+# TODO Improve code reuse.
+
 # TODO get machine precision instead ?
 EPS = 1e-12 # Precision level
 
@@ -164,13 +166,15 @@ def _gradient_descent(objective, p0, it, n_iter, objective_error=None,
 # End of code copied from scikit-learn
 
 
-def kl_divergence_and_gradient(y, p_matrix, n_embedded_dimensions=2):
+def kl_divergence_and_gradient(y, p_matrix, n_embedded_dimensions=2, lock_grad_indices = []):
     """
     :param y: Current NxK matrix of embedded coordinates. K is the reduced dimensionality (2 or 3 usually).
     Array N*K by 1 is also acceptable (scipy.optimize style).
     :param p_matrix: Matrix P for TSNE (distances represented as Gaussian probabilities)
     :param n_embedded_dimensions: Number of dimensions. Necessary only if 1D representation of Y is passed (like in
     scipy.optimize). If Y is 2D, n_embedded_dimensions will be ignored.
+    :param lock_grad_indices: For those indices force gradient to zero. Useful if you add new data and should not touch
+    old values.
     :return: Tuple of current KL divergence (target function) and its gradient dC/dY (shaped as y was shaped)
     """
     if len(y.shape) > 1:
@@ -206,7 +210,7 @@ def kl_divergence_and_gradient(y, p_matrix, n_embedded_dimensions=2):
         # Y[i, :] - Y : it is a matrix, where each row is Yi - Yj
         # If you multiply i-th row of matrix S by matrix Y[i, :]-Y, you'll exactly get sum over j (Sij * (Yi - Yj))
         kl_grad[i, :] = 4*p_minus_q_mul_q_unnorm[i, :].dot(y[i, :] - y)
-
+    kl_grad[lock_grad_indices, :] = 0
     kl_grad = kl_grad.reshape(y_original_shape)
     return kl_sum, kl_grad
 
@@ -289,7 +293,7 @@ class DynamicTSNE:
         self.P_matrix = None  # Not calculated yet
         self.sigma = None  # Let's keep it just un case
 
-    def fit(self, x, method='gd_momentum', verbose=0, optimizer_kwargs=None, random_seed = None):
+    def fit(self, x, method='gd_momentum', verbose=0, optimizer_kwargs=None, random_seed=None, from_scratch=False):
         """
         :param x: NxK array. N - number of points, K - original number of dimensions
         :param method: Method for finding minimum KL divergence. Supported methods:
@@ -304,6 +308,9 @@ class DynamicTSNE:
             n_iters: number of gradient descent iterations.  Default - 1000.
         See help of _gradient_descent method for more possible parameters of 'gd_momentum' method and corresponding
         defaults.
+        :param random_seed: Random seed. Use for reproducibility.
+        :param from_scratch: If there is already some fitted data, should we start over (True), or add this data to
+        existing (False)? Default - False TODO: not used at the moment. Treated as True.
         :return: Embedded representation of x.
         """
         # TODO: what if those are additional X? Use another method or field
@@ -337,6 +344,8 @@ class DynamicTSNE:
                     objective=lambda t: kl_divergence_and_gradient(t, self.P_matrix, self.n_embedded_dimensions),
                     p0=self.Y, it=0, verbose=verbose, **optimizer_kwargs_no_iters)
                 self.P_matrix = self.P_matrix / early_exaggeration
+                if verbose>=2:
+                    print("Early exaggeration is over")
 
             self.Y, final_val, final_iter = _gradient_descent(
                     objective=lambda t: kl_divergence_and_gradient(t, self.P_matrix, self.n_embedded_dimensions),
@@ -346,10 +355,83 @@ class DynamicTSNE:
             raise ValueError("Method not recognized: "+str(method))
         return self.Y
 
-    def fit_transform(self, x):
-        return self.fit(x)
+    def fit_transform(self, x, method='gd_momentum', verbose=0, optimizer_kwargs=None, random_seed=None,
+                      from_scratch=False):
+        return self.fit(x, method=method, verbose=verbose, optimizer_kwargs=optimizer_kwargs,
+                        random_seed=random_seed, from_scratch=from_scratch)
 
-    def transform(self, x, y=None):
-        pass
+    # TODO what if some new X coincide with existing X? Lock it?
+    def transform(self, x, y=None, method='gd_momentum', verbose=0, optimizer_kwargs=None, random_seed=None):
+        """
+        Transforms the data using existing embedding, but does not save those data for further reference.
+        :param x:
+        :param y: embeddings to start with. If X is a small update of existing data, it might make sense to start from
+        existing embeddings.
+        :param method: Method for finding minimum KL divergence. Supported methods:
+            'gd_momentum' (default) - gradient descent with momentum (see reference [1]).
+        TODO For now no other method is supported
+        :param verbose: Logging level. 0 - nothing. Higher - more verbose.
+        :param optimizer_kwargs: will be passed to the optimizer.
+        Selected possible arguments (applicability depends on method):
+            early_exaggeration: Increases Pij-s by that factor for first early_exageration_iters iterations. Larger
+        value often means larger space between clusters. Set None in order to not use it. Default - 4.
+            early_exagegration_iters: see early_exaggeration.
+            n_iters: number of gradient descent iterations.  Default - 1000.
+        See help of _gradient_descent method for more possible parameters of 'gd_momentum' method and corresponding
+        defaults.
+        :param random_seed: Random seed. Use for reproducibility.
+        :return: Embedded representation of X, using already calculated embeddings.
+        """
+        if self.X is None:
+            raise ValueError("No embedding found. Perhaps, model is not trained.")
+        if random_seed is not None:
+            np.random.seed(random_seed)
+        if optimizer_kwargs is None:
+            optimizer_kwargs = {}
+        optimizer_kwargs = optimizer_kwargs.copy() # We don't need to change it
+        # Step 1. Get new P matrix and sigmas.
+        # TODO so what shall we do with P and sigma? Recalculate? How.
+        # TODO Does it matter? As long as old Y stay, does it matter if old P stay the same? Anyway, P is not going to
+        # be updated
+        x_merged = np.concatenate((self.X, x), axis=0)
+        d_new = self.distance_function(x_merged)
+        if len(d_new.shape) == 1 or d_new.shape[1] != d_new.shape[0]:  # If it is scipy-distance-style array
+            d_new = distance.squareform(d_new)  # distance metrics, now surely NxN
+        p_new, _ = get_p_and_sigma(d_new, self.perplexity, verbose=verbose)
+
+        # Step 2. Run gradient descent with new P and sigmas
+        lock_grad_indices = list(range(len(self.Y))) # All old Y's stay where they are
+        if method == 'gd_momentum':
+            if 'n_iter' not in optimizer_kwargs:
+                optimizer_kwargs['n_iter'] = 1000  # Default - 1000 iterations
+            # We don't need early_exaggeration parameters to stick around
+            early_exaggeration = optimizer_kwargs.pop('early_exaggeration', 4.0)
+            early_exaggeration_iters = optimizer_kwargs.pop('early_exaggeration_iters', 100)
+
+            new_y = np.concatenate([self.Y, np.random.randn(x.shape[0], self.n_embedded_dimensions)], axis=0)
+            new_y = new_y.reshape((-1,))
+
+            it = 0
+            if early_exaggeration is not None:
+                p_new = p_new * early_exaggeration
+                optimizer_kwargs_no_iters = optimizer_kwargs.copy()
+                optimizer_kwargs_no_iters['n_iter'] = early_exaggeration_iters
+                new_y, final_val, it = _gradient_descent(
+                    objective=lambda t:
+                        kl_divergence_and_gradient(t, p_new, self.n_embedded_dimensions, lock_grad_indices),
+                    p0=new_y, it=0, verbose=verbose, **optimizer_kwargs_no_iters)
+                p_new = p_new / early_exaggeration
+                if verbose>=2:
+                    print("Early exaggeration is over")
+
+            new_y, final_val, final_iter = _gradient_descent(
+                    objective=lambda t:
+                        kl_divergence_and_gradient(t, p_new, self.n_embedded_dimensions, lock_grad_indices),
+                    p0=new_y, it=it, verbose=verbose, **optimizer_kwargs)
+            new_y = new_y.reshape((-1, self.n_embedded_dimensions))
+            new_y = new_y[-x.shape[0]:, :]  # Keep only new things
+        else:
+            raise ValueError("Method not recognized: "+str(method))
+        return new_y
 
 
