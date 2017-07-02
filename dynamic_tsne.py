@@ -215,7 +215,7 @@ def kl_divergence_and_gradient(y, p_matrix, n_embedded_dimensions=2, lock_grad_i
     return kl_sum, kl_grad
 
 
-def get_p_and_sigma(distance_matrix, perplexity, starting_sigma=None, method=None, verbose=0):
+def get_p_and_sigma(distance_matrix, perplexity, starting_sigma=None, method=None, verbose=0, lock_sigmas=[]):
     """"
     Gets Pij matrix and Gaussian sigma for symmetric version of TSNE.
     P is calculated in asymmetric manner (with conditional probabilities), then symmetrized as Pij = (Pi|j + Pj|i)/(2N)
@@ -225,7 +225,8 @@ def get_p_and_sigma(distance_matrix, perplexity, starting_sigma=None, method=Non
     :param starting_sigma: values of sigma to start with; Nx1 for asymmetric (even if symmetrized afterwards),
            single value for symmetric #TODO: currently - asymmetric only
     :param method: #TODO ignored for now, forced to advanced symmetrized.
-    :param verbos: Logging level. 0 (default) - nothing.
+    :param verbose: Logging level. 0 (default) - nothing.
+    :param lock_sigmas: Do not calculate sigmas at those indices. Leave them at starting sigmas.
     :return: A tuple consisting of:
         P - Gaussian representation of distances
         sigma - single standard deviation for Gaussian representation of distances (required for TSNE)
@@ -259,9 +260,12 @@ def get_p_and_sigma(distance_matrix, perplexity, starting_sigma=None, method=Non
     p_final = np.zeros((num_pts, num_pts))
     for i in range(num_pts):
         # Locking row number, finding best beta for row
-        res = optimize.root(lambda t: objective(t, i), starting_sigma[i])  # TODO play with methods
-        best_sigma[i, 0] = np.abs(res.x)  # Getting our best value.
-        # So there is a chance that -sigma will be found
+        if i not in lock_sigmas:
+            res = optimize.root(lambda t: objective(t, i), starting_sigma[i])  # TODO play with methods
+            best_sigma[i, 0] = np.abs(res.x)  # Getting our best value.
+            # So there is a chance that -sigma will be found
+        else:
+            best_sigma[i,0] = starting_sigma[i]
         # And getting P-matrix. This time no extraction.
         p_final_row = np.exp(d_prepared[i, :] / best_sigma[i, 0]**2)  # Getting Gaussian probability densities
         p_final_row[i] = 0
@@ -361,7 +365,8 @@ class DynamicTSNE:
                         random_seed=random_seed, from_scratch=from_scratch)
 
     # TODO what if some new X coincide with existing X? Lock it?
-    def transform(self, x, y=None, method='gd_momentum', verbose=0, optimizer_kwargs=None, random_seed=None):
+    def transform(self, x, y=None, method='gd_momentum', verbose=0, keep_sigmas = True, use_sigmas=None,
+                  optimizer_kwargs=None, random_seed=None):
         """
         Transforms the data using existing embedding, but does not save those data for further reference.
         :param x:
@@ -374,6 +379,11 @@ class DynamicTSNE:
             'gd_momentum' (default) - gradient descent with momentum (see reference [1]).
         TODO For now no other method is supported
         :param verbose: Logging level. 0 - nothing. Higher - more verbose.
+        :param keep_sigmas: Keep variance for old data (hence, new data does not count against number of neighbors).
+        Recommended.
+        :param use_sigmas: Provide sigmas for Pij matrix instead of trying to calculate. Default - None. Designed
+        mainly for debug, just keep default in most cases. You may provide sigmas for all values of for new values only
+        (method will figure out depending on size).
         :param optimizer_kwargs: will be passed to the optimizer.
         Selected possible arguments (applicability depends on method):
             early_exaggeration: Increases Pij-s by that factor for first early_exageration_iters iterations. Larger
@@ -405,7 +415,40 @@ class DynamicTSNE:
         # TODO So, keep old sigmas for old values? Think of it. Preferably, make configurable with good defaults.
         # TODO Imagine transforming the same training data. Expect them to stay. Think from that perspective.
         # TODO If we recalculate ALL sigmas, won't happen.
-        p_new, _ = get_p_and_sigma(d_new, self.perplexity, verbose=verbose)
+
+        # So, we are provided sigmas (I cannot imagine it happening outside debug)
+        if use_sigmas is not None:
+            use_sigmas = np.array(use_sigmas).reshape((-1,1))  # Reshaping into column
+            # Did we provide all sigmas?
+            if len(use_sigmas) == (len(self.X) + len(x)):
+                # Lock all sigms in place. This way it will just calculate P and not search for any sigmas
+                lock_sigmas = list(range(len(use_sigmas)))
+                p_new, _ = get_p_and_sigma(d_new, self.perplexity, starting_sigma=use_sigmas,
+                                           lock_sigmas=lock_sigmas, verbose=verbose)
+            elif len(use_sigmas) == len(x):
+                # Only new sigmas provided. What to do with old sigmas?
+                # If we are requested to keep them, we keep them
+                if keep_sigmas:
+                    new_sigmas = np.concatenate((self.sigma, use_sigmas), axis=0)
+                    lock_sigmas = list(range(len(new_sigmas)))
+                    # Again, lock everything. Do not search, just get P.
+                    p_new, _ = get_p_and_sigma(d_new, self.perplexity, starting_sigma=new_sigmas,
+                                               lock_sigmas=lock_sigmas, verbose=verbose)
+                else:
+                    # New sigmas are known, but old ones need to be recalculated.
+                    start_sigmas = np.concatenate((np.array([[1.0]] * len(self.X)), use_sigmas), axis=0)
+                    lock_sigmas = list(range(len(self.X), len(self.X)+len(use_sigmas)))
+                    p_new, _ = get_p_and_sigma(d_new, self.perplexity, starting_sigma=start_sigmas,
+                                               lock_sigmas=lock_sigmas, verbose=verbose)
+
+        else:
+            if keep_sigmas:
+                start_sigmas = np.concatenate((self.sigma, np.array([[1.0]]*len(x))), axis=0)
+                lock_sigmas = list(range(len(self.X)))
+                p_new, _ = get_p_and_sigma(d_new, self.perplexity, starting_sigma=start_sigmas,
+                                           lock_sigmas=lock_sigmas, verbose=verbose)
+            else:
+                p_new, _ = get_p_and_sigma(d_new, self.perplexity, verbose=verbose)
 
         # Step 2. Run gradient descent with new P and sigmas
         lock_grad_indices = list(range(len(self.Y))) # All old Y's stay where they are

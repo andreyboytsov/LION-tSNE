@@ -17,15 +17,8 @@ import numpy as np
 
 if __name__ == "__main__":
     data = load_iris()
-    np.random.seed(1)
-    order = np.random.permutation(len(data.data))  # Shuffle the examples
-    print(data.data.shape)
-    all_data = data.data[order, :]
-    all_labels = data.target[order]
-    X = all_data[:len(all_data)//2]
-    X_for_transformation = all_data[len(all_data)//2:]
-    labels = all_labels[:len(all_labels)//2]
-    labels2 = all_labels[len(all_labels)//2:]
+    X = data.data
+    labels = data.target
 
     dTSNE = dynamic_tsne.DynamicTSNE(perplexity=20)
     # Small dataset. Iterations are very fast, we can afford more
@@ -35,12 +28,15 @@ if __name__ == "__main__":
     # Option 2. Start with Ys that corresponded to closest original Xs
     # starting_y = 'closest'
     # Option 3. Start with a center of class. Only for testing, it won't be available in training.
-    starting_y = np.zeros((len(labels2), 2))
-    for i in range(len(starting_y)):
-        starting_y[i,:] = np.mean(y[labels == labels2[i], :], axis=0)
-    y2 = dTSNE.transform(X_for_transformation, y=starting_y, verbose=2,
-                         optimizer_kwargs={'momentum': 0.8, 'n_iter': 3000}, random_seed=1)
-
+    #starting_y = np.zeros((len(labels), 2))
+    #for i in range(len(starting_y)):
+    #    starting_y[i,:] = np.mean(y[labels == labels[i], :], axis=0)
+    # Option 4. Only for double-transform. Start with old values. Closest might mess up if X had duplicates.
+    starting_y = y.copy()
+    use_sigmas = np.concatenate((dTSNE.sigma, dTSNE.sigma), axis=0)
+    y2 = dTSNE.transform(X, y=starting_y, verbose=2, use_sigmas=use_sigmas,
+                         optimizer_kwargs={'momentum': 0.8, 'n_iter': 10000}, random_seed=1)
+    print("Mean square error between y1 and y2: ", np.mean(np.sum((y-y2)**2, axis=1)))
     color_list = ['blue','orange','green']
 
     plt.gcf().set_size_inches(10, 10)
@@ -49,10 +45,10 @@ if __name__ == "__main__":
         plt.scatter(y[labels == l, 0], y[labels == l, 1], c=color_list[l])
         legend_list.append(str(data.target_names[l]))
     for l in set(sorted(labels)):
-        plt.scatter(y2[labels2 == l, 0], y2[labels2 == l, 1], c=color_list[l], marker='v')
+        plt.scatter(y2[labels == l, 0], y2[labels == l, 1], c=color_list[l], marker='v')
         legend_list.append(str(data.target_names[l])+" embedded")
     # TODO almost worked, but there were 3 outliers. Need to investigate.
     plt.xlim([-800, 1300])
-    plt.ylim([-100, 300])
+    plt.ylim([-200, 200])
     plt.legend(legend_list)
     plt.show()
