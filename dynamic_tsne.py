@@ -21,8 +21,7 @@
 import numpy as np
 from scipy.spatial import distance
 from scipy import optimize
-from sklearn.decomposition import PCA
-import matplotlib.pyplot as plt
+from scipy import interpolate
 from scipy import linalg
 
 # TODO Add some debug logging, put verbose levels
@@ -36,7 +35,7 @@ from scipy import linalg
 # TODO get machine precision instead ?
 EPS = 1e-12 # Precision level
 
-# TODO Make P calcualtions configurable
+# TODO Make P calculations configurable
 # TODO Make sigma calculations configurable
 
 # Main tasks:
@@ -280,22 +279,55 @@ def get_p_and_sigma(distance_matrix, perplexity, starting_sigma=None, method=Non
 
 class DynamicTSNE:
 
-    def __init__(self, perplexity, n_embedded_dimensions=2, distance_function=distance.pdist, symmetric=True):
+    def __init__(self, perplexity, n_embedded_dimensions=2, distance_function='Euclidean', symmetric=True):
         """
         :param perplexity: TSNE perplexity. Can be roughly thought as the average number of neighbors.
-        :param n_embedded_dimensions: 
-        :param distance_function: function that measures distance, input: elements (like X), output - NxN distance
-        matrix or N*(N-1)/2-length array (like most scipy distance metrics return). Default distance - Euclidean.
+        :param n_embedded_dimensions: Number of dimensions in embedded space. Usually 2.
+        :param distance_function: function that measures distance. Default distance - 'Euclidean'. Can accept string
+        description or any function that accepts 2 vectors and return value.
         :param symmetric: 
         """
         self.perplexity = perplexity
         self.n_embedded_dimensions = n_embedded_dimensions
         self.symmetric = symmetric #TODO Asymmetric version is not yet implemented
-        self.distance_function = distance_function
+        if distance_function is None:
+            self.distance_function = 'Euclidean'
+        elif distance_function == 'Euclidean' or callable(distance_function):
+            self.distance_function = distance_function
+        else:
+            raise ValueError("Distance function not recognized: "+str(distance_function))
         self.X = None  # Just an indication that we did not fit anything yet
         self.Y = None  # Not trained yet
         self.P_matrix = None  # Not calculated yet
         self.sigma = None  # Let's keep it just un case
+
+    def get_distance(self,x1,x2):
+        """
+        :param x1: K-dimensional sample
+        :param x2: Another K-dimensional sample
+        :return: Distance according to chosen distance metrics
+        """
+        if self.distance_function == 'Euclidean':
+            x1 = x1.reshape((-1,))
+            x2 = x2.reshape((-1,))
+            return np.sqrt(np.sum((x1-x2)**2))
+        else:
+            return self.distance_function(x1, x2)
+
+    def get_distance_matrix(self, x):
+        """
+        :param x: NxK array of N samples, K dimensions each.
+        :return: NxN matrix of distances according to chosen distance metrics
+        """
+        if self.distance_function == 'Euclidean':
+            return distance.squareform(distance.pdist(x)) # distance metrics, now surely NxN
+        else:
+            # So, we have custom distance function. OK then.
+            d = np.zeros((x.shape[0], x.shape[0]))
+            for i in range(x.shape[0]):
+                for j in range(x.shape[0]):
+                    d[i,j] = self.distance_function(x[i,:], x[j,:])
+            return d
 
     def fit(self, x, method='gd_momentum', verbose=0, optimizer_kwargs=None, random_seed=None, from_scratch=False):
         """
@@ -324,9 +356,7 @@ class DynamicTSNE:
             optimizer_kwargs = {}
         optimizer_kwargs = optimizer_kwargs.copy() # We don't need to change it
         self.X = x
-        d = self.distance_function(x)
-        if len(d.shape) == 1 or d.shape[1] != d.shape[0]:  # If it is scipy-distance-style array
-            d = distance.squareform(d)  # distance metrics, now surely NxN
+        d = self.get_distance_matrix(self.X)
 
         self.P_matrix, self.sigma = get_p_and_sigma(d, self.perplexity, verbose=verbose)
         # Making sure that Pij * log(Pij) = 0 if Pij = 0 (just like in lim p->0 p * log(p))
@@ -397,6 +427,7 @@ class DynamicTSNE:
         """
         if self.X is None:
             raise ValueError("No embedding found. Perhaps, model is not trained.")
+        x = np.array(x)
         if random_seed is not None:
             np.random.seed(random_seed)
         if optimizer_kwargs is None:
@@ -407,14 +438,13 @@ class DynamicTSNE:
         # TODO Does it matter? As long as old Y stay, does it matter if old P stay the same? Anyway, P is not going to
         # be updated
         x_merged = np.concatenate((self.X, x), axis=0)
-        d_new = self.distance_function(x_merged)
-        if len(d_new.shape) == 1 or d_new.shape[1] != d_new.shape[0]:  # If it is scipy-distance-style array
-            d_new = distance.squareform(d_new)  # distance metrics, now surely NxN
+        d_new = self.get_distance_matrix(x_merged)
         # TODO or shall we keep sigmas of existing? Recalculating sigma will keep perplexity. Perplexity is
         # TODO number of neighbors. With new unrelated data number of parents will increase.
         # TODO So, keep old sigmas for old values? Think of it. Preferably, make configurable with good defaults.
         # TODO Imagine transforming the same training data. Expect them to stay. Think from that perspective.
         # TODO If we recalculate ALL sigmas, won't happen.
+        # So far decision is just to use interpolation
 
         # So, we are provided sigmas (I cannot imagine it happening outside debug)
         if use_sigmas is not None:
@@ -498,4 +528,49 @@ class DynamicTSNE:
             raise ValueError("Method not recognized: "+str(method))
         return new_y
 
+    def generate_embedding_function(self, embedding_function_type=None, function_kwargs=None):
+        """
+        Creates embedding function for learned TSNE embedding.
+        :param embedding_function_type: Type of interpolator. Supported types:
+            'makeshift-lagrange-norm' (default, 'default', None) - makeshift interpolator. Works like multidimensional
+            version of Lagrange multipliers, but uses distance instead of difference (to account for
+            multidimensionality). Distance function is specified in the constructor (default - Euclidean).
+            Interpolates each Y dimension separately. If you pass one of the known Xi (used for fitting), it is
+            guaranteed to return corresponding Yi. If there are 2 similar fitted X, that correspond to different Ys,
+            any Y can be picked. Smooth, if distance function is smooth (looks like, but I need to double-check).
+        :param function_kwargs: Parameters of embedding function (if applicable).
+        :return: Embedding function, which accepts NxK array (K - original number of dimensions). Returns NxD embedded
+        array (D is usually 2). Also accepts verbose parameter for logging level.
+        """
+        if self.X is None:
+            raise ValueError("No embedding found. Perhaps, model is not trained.")
+
+        if embedding_function_type is None or embedding_function_type == 'default':
+            embedding_function_type = 'makeshift-lagrange-norm'
+
+        if embedding_function_type is None:
+            function_kwargs = {}
+
+        if embedding_function_type == 'makeshift-lagrange-norm':
+            # TODO duplicate values of X ?
+            d = self.get_distance_matrix(self.X)
+
+            # TODO. OK, let's do it with loops and think of vectorized implementation later
+            def resulting_embedding_function(x, verbose=0):
+                x = np.array(x).reshape((-1,self.X.shape[1]))
+                y = np.zeros((len(x), self.n_embedded_dimensions))
+                for k in range(x.shape[0]): # For each of k requested points
+                    if verbose>=2:
+                        print("Embedding sample ",k)
+                    for i in range(self.X.shape[0]): # Summing over all original Y-s
+                        coef = 1.0
+                        for j in range(self.X.shape[0]):
+                            if i != j:
+                                coef *= self.get_distance(x[k, :],self.X[j, :])/d[i, j]
+                        y[k, :] += coef * self.Y[i, :]
+                return y
+
+            return resulting_embedding_function
+        else:
+            raise ValueError("Unknown embedding function type: "+str(embedding_function_type))
 

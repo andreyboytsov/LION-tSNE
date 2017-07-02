@@ -3,7 +3,7 @@ Improvements of TSNE algorithm, mainly to incorporate data that appear or change
 
 Work in progress
 
-Available unde 3-clause BSD license.
+Available under 3-clause BSD license.
 Uses some gradient descent code from sklearn package (which is also avaiable under
 3-clause BSD license).
 

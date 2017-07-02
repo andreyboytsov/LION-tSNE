@@ -1,8 +1,8 @@
 # Author: Andrey Boytsov <andrey.boytsov@uni.lu> <andrey.m.boytsov@gmail.com>
 # License: BSD 3 clause (C) 2017
 
-# Fitting iris dataset (from sklearn) Embedding the same data using transform function, see how close new Ys are
-# to original data. Feel free to play with transformation parameters.
+# Fitting iris dataset (from sklearn) Generating embedding function and using it to embed the same data. It should be
+# EXACTLY the same values.
 
 import sys
 import os
@@ -19,22 +19,18 @@ if __name__ == "__main__":
     X = data.data
     labels = data.target
 
+    # Embedding function requires unique arrays.
+    # Well, embedding fuction can protect from it, but still we can get some confusion in mean square error, if it
+    # "chooses" different sample
+    un_array, un_idx = np.unique(X, axis=0, return_index=True)
+    X = X[un_idx, :]
+    labels = labels[un_idx]
+
     dTSNE = dynamic_tsne.DynamicTSNE(perplexity=20)
     # Small dataset. Iterations are very fast, we can afford more
     y = dTSNE.fit(X, verbose=2, optimizer_kwargs={'momentum': 0.8, 'n_iter' : 3000}, random_seed=1)
-    # Option 1. Start with random values
-    # starting_y = None
-    # Option 2. Start with Ys that corresponded to closest original Xs
-    # starting_y = 'closest'
-    # Option 3. Start with a center of class. Only for testing, it won't be available in training.
-    #starting_y = np.zeros((len(labels), 2))
-    #for i in range(len(starting_y)):
-    #    starting_y[i,:] = np.mean(y[labels == labels[i], :], axis=0)
-    # Option 4. Only for double-transform. Start with old values. Closest might mess up if X had duplicates.
-    starting_y = y.copy()
-    use_sigmas = np.concatenate((dTSNE.sigma, dTSNE.sigma), axis=0)
-    y2 = dTSNE.transform(X, y=starting_y, verbose=2, use_sigmas=use_sigmas,
-                         optimizer_kwargs={'momentum': 0.8, 'n_iter': 10000}, random_seed=1)
+    embedder = dTSNE.generate_embedding_function()
+    y2 = embedder(X, verbose=2)
     print("Mean square error between y1 and y2: ", np.mean(np.sum((y-y2)**2, axis=1)))
     color_list = ['blue','orange','green']
 
@@ -46,7 +42,5 @@ if __name__ == "__main__":
     for l in set(sorted(labels)):
         plt.scatter(y2[labels == l, 0], y2[labels == l, 1], c=color_list[l], marker='v')
         legend_list.append(str(data.target_names[l])+" embedded")
-    plt.xlim([-800, 1300])
-    plt.ylim([-200, 200])
     plt.legend(legend_list)
     plt.show()
