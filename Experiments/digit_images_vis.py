@@ -18,7 +18,7 @@ if __name__ == "__main__":
     labels = data.target
 
     dTSNE = dynamic_tsne.DynamicTSNE(perplexity=20)
-    y = dTSNE.fit(X, verbose=2, optimizer_kwargs={'momentum': 0.8})
+    y = dTSNE.fit(X, verbose=2, optimizer_kwargs={'momentum': 0.8}, random_seed=0)
 
     plt.gcf().set_size_inches(10, 10)
     legend_list = list()

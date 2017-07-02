@@ -19,7 +19,7 @@ if __name__ == "__main__":
 
     dTSNE = dynamic_tsne.DynamicTSNE(perplexity=20)
     # Small dataset. Iterations are very fast, we can afford more
-    y = dTSNE.fit(X, verbose=2, optimizer_kwargs={'momentum': 0.8, 'n_iter' : 3000})
+    y = dTSNE.fit(X, verbose=2, optimizer_kwargs={'momentum': 0.8, 'n_iter' : 3000}, random_seed=1)
 
     plt.gcf().set_size_inches(10, 10)
     legend_list = list()

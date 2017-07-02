@@ -245,8 +245,8 @@ def get_p_and_sigma(distance_matrix, perplexity, starting_sigma=None, method=Non
         current_d = np.concatenate((d_prepared[num_row, :num_row], d_prepared[num_row, num_row+1:]))
         p_row_current = np.exp(current_d / t**2)  # Getting Gaussian probability densities
         # d_prepared already contains minus, squared distances and /2 . Operations left: /sigma**2 and exponent
-        p_row_current = p_row_current / np.sum(p_row_current)
         p_row_current = np.maximum(p_row_current, EPS) # Zero can appear if we have several exactly same X points
+        p_row_current = p_row_current / np.sum(p_row_current)
         shannon_entropy_row = -p_row_current*np.log2(p_row_current)
         shannon_entropy_summed = np.sum(shannon_entropy_row)
         return shannon_entropy_summed-expected_perplexity_log[num_row]
@@ -289,7 +289,7 @@ class DynamicTSNE:
         self.P_matrix = None  # Not calculated yet
         self.sigma = None  # Let's keep it just un case
 
-    def fit(self, x, method='gd_momentum', verbose=0, optimizer_kwargs=None):
+    def fit(self, x, method='gd_momentum', verbose=0, optimizer_kwargs=None, random_seed = None):
         """
         :param x: NxK array. N - number of points, K - original number of dimensions
         :param method: Method for finding minimum KL divergence. Supported methods:
@@ -307,6 +307,8 @@ class DynamicTSNE:
         :return: Embedded representation of x.
         """
         # TODO: what if those are additional X? Use another method or field
+        if random_seed is not None:
+            np.random.seed(random_seed)
         if optimizer_kwargs is None:
             optimizer_kwargs = {}
         optimizer_kwargs = optimizer_kwargs.copy() # We don't need to change it

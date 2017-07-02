@@ -1,3 +1,5 @@
+from sklearn.datasets import load_iris
+
 # Importing from parent directory
 import sys
 import os
@@ -11,3 +13,17 @@ def test_init():
     :return:
     """
     dynamic_tsne.DynamicTSNE(perplexity=20)
+
+
+def test_random_seed():
+    """
+    Sets random seed and tests that results are the same.
+    :return:
+    """
+    data = load_iris()
+    X = data.data
+    dTSNE = dynamic_tsne.DynamicTSNE(perplexity=20)
+    # Small dataset. Iterations are very fast, we can afford more
+    y = dTSNE.fit(X, optimizer_kwargs={'momentum': 0.8, 'n_iter' : 3000}, random_seed=1)
+    y2 = dTSNE.fit(X, optimizer_kwargs={'momentum': 0.8, 'n_iter': 3000}, random_seed=1)
+    assert (y == y2).all(), "Same random seed - different results"
