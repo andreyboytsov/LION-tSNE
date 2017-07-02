@@ -211,7 +211,7 @@ def kl_divergence_and_gradient(y, p_matrix, n_embedded_dimensions=2):
     return kl_sum, kl_grad
 
 
-def get_p_and_sigma(distance_matrix, perplexity, starting_sigma=None, method=None):
+def get_p_and_sigma(distance_matrix, perplexity, starting_sigma=None, method=None, verbose=0):
     """"
     Gets Pij matrix and Gaussian sigma for symmetric version of TSNE.
     P is calculated in asymmetric manner (with conditional probabilities), then symmetrized as Pij = (Pi|j + Pj|i)/(2N)
@@ -221,6 +221,7 @@ def get_p_and_sigma(distance_matrix, perplexity, starting_sigma=None, method=Non
     :param starting_sigma: values of sigma to start with; Nx1 for asymmetric (even if symmetrized afterwards),
            single value for symmetric #TODO: currently - asymmetric only
     :param method: #TODO ignored for now, forced to advanced symmetrized.
+    :param verbos: Logging level. 0 (default) - nothing.
     :return: A tuple consisting of:
         P - Gaussian representation of distances
         sigma - single standard deviation for Gaussian representation of distances (required for TSNE)
@@ -245,6 +246,7 @@ def get_p_and_sigma(distance_matrix, perplexity, starting_sigma=None, method=Non
         p_row_current = np.exp(current_d / t**2)  # Getting Gaussian probability densities
         # d_prepared already contains minus, squared distances and /2 . Operations left: /sigma**2 and exponent
         p_row_current = p_row_current / np.sum(p_row_current)
+        p_row_current = np.maximum(p_row_current, EPS) # Zero can appear if we have several exactly same X points
         shannon_entropy_row = -p_row_current*np.log2(p_row_current)
         shannon_entropy_summed = np.sum(shannon_entropy_row)
         return shannon_entropy_summed-expected_perplexity_log[num_row]
@@ -263,6 +265,8 @@ def get_p_and_sigma(distance_matrix, perplexity, starting_sigma=None, method=Non
         p_final[i, :] = p_final_row
     p_final = p_final + p_final.T  # For advanced symmetric. Symmetrize...
     p_final = p_final / np.sum(p_final)  # ... then renormalize
+    if verbose >= 2:
+        print("Found sigma. Average: ", np.mean(best_sigma))
     return p_final, best_sigma
 
 
@@ -278,42 +282,49 @@ class DynamicTSNE:
         """
         self.perplexity = perplexity
         self.n_embedded_dimensions = n_embedded_dimensions
-        self.symmetric = symmetric
-        assert symmetric, "Asymmetric version not implemented yet"  # TODO remove it
+        self.symmetric = symmetric #TODO Asymmetric version is not yet implemented
         self.distance_function = distance_function
         self.X = None  # Just an indication that we did not fit anything yet
         self.Y = None  # Not trained yet
         self.P_matrix = None  # Not calculated yet
         self.sigma = None  # Let's keep it just un case
 
-    def fit(self, x, method='gd_momentum', verbose=0, early_exaggeration = 4.0, early_exaggeration_iters = 100,
-            optimizer_kwargs=None):
+    def fit(self, x, method='gd_momentum', verbose=0, optimizer_kwargs=None):
         """
-        :param x: NxK numpy array. N - number of points, K - original number of dimensions
-        :param method: Method for finding minimum. Supported methods:
+        :param x: NxK array. N - number of points, K - original number of dimensions
+        :param method: Method for finding minimum KL divergence. Supported methods:
             'gd_momentum' (default) - gradient descent with momentum (see reference [1]).
         TODO For now no other method is supported
         :param verbose: Logging level. 0 - nothing. Higher - more verbose.
-        :param early_exaggeration: Increases Pij's by that factor for first early_exageration_iters iterations. Larger
-        value often means larger space between clusters. Set None in order to not use it
-        :param  early_exagegration_iters: see early_exaggeration.
-        :param optimizer_kwargs: will be passed to the optimizer
-        :return:
+        :param optimizer_kwargs: will be passed to the optimizer.
+        Selected possible arguments (applicability depends on method):
+            early_exaggeration: Increases Pij-s by that factor for first early_exageration_iters iterations. Larger
+        value often means larger space between clusters. Set None in order to not use it. Default - 4.
+            early_exagegration_iters: see early_exaggeration.
+            n_iters: number of gradient descent iterations.  Default - 1000.
+        See help of _gradient_descent method for more possible parameters of 'gd_momentum' method and corresponding
+        defaults.
+        :return: Embedded representation of x.
         """
         # TODO: what if those are additional X? Use another method or field
         if optimizer_kwargs is None:
             optimizer_kwargs = {}
+        optimizer_kwargs = optimizer_kwargs.copy() # We don't need to change it
         self.X = x
         d = self.distance_function(x)
         if len(d.shape) == 1 or d.shape[1] != d.shape[0]:  # If it is scipy-distance-style array
             d = distance.squareform(d)  # distance metrics, now surely NxN
 
-        self.P_matrix, self.sigma = get_p_and_sigma(d, self.perplexity)
+        self.P_matrix, self.sigma = get_p_and_sigma(d, self.perplexity, verbose=verbose)
         # Making sure that Pij * log(Pij) = 0 if Pij = 0 (just like in lim p->0 p * log(p))
 
         if method == 'gd_momentum':
             if 'n_iter' not in optimizer_kwargs:
                 optimizer_kwargs['n_iter'] = 1000  # Default - 1000 iterations
+            # We don't need early_exaggeration parameters to stick around
+            early_exaggeration = optimizer_kwargs.pop('early_exaggeration', 4.0)
+            early_exaggeration_iters = optimizer_kwargs.pop('early_exaggeration_iters', 100)
+
             self.Y = np.random.randn(d.shape[0] * self.n_embedded_dimensions)
             it = 0
             if early_exaggeration is not None:
@@ -340,12 +351,3 @@ class DynamicTSNE:
         pass
 
 
-if __name__ == "__main__":
-    X_raw = np.loadtxt("LocalDatasets/mnist2500_X.txt")
-    mnist_labels = np.loadtxt("LocalDatasets/mnist2500_labels.txt")
-    X = PCA(n_components=50).fit_transform(X_raw)
-
-    dTSNE = DynamicTSNE(perplexity=20)
-    y = dTSNE.fit(X, verbose=2, optimizer_kwargs={'momentum': 0.8})
-    plt.scatter(y[:, 0], y[:, 1], c=mnist_labels)
-    plt.show()

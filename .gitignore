@@ -1,2 +1,4 @@
 .idea/
-/LocalDatasets
+LocalDatasets/
+__pycache__/
+.cache/
