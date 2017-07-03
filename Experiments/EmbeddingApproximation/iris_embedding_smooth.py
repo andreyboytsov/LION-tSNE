@@ -1,7 +1,7 @@
 # Author: Andrey Boytsov <andrey.boytsov@uni.lu> <andrey.m.boytsov@gmail.com>
 # License: BSD 3 clause (C) 2017
 
-# Fitting iris dataset (from sklearn) Generating embedding function and using it to visualize smooth transition from
+# Fitting iris dataset (from sklearn). Generating embedding function and using it to visualize smooth transition from
 # one value to another. Comparing to embedding_close, explores way more options, different transformations.
 
 import sys

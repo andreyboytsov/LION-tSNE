@@ -1,7 +1,7 @@
 # Author: Andrey Boytsov <andrey.boytsov@uni.lu> <andrey.m.boytsov@gmail.com>
 # License: BSD 3 clause (C) 2017
 
-# Fitting iris dataset (from sklearn) Generating embedding function and using it to embed the same data. It should be
+# Fitting iris dataset (from sklearn). Generating embedding function and using it to embed the same data. It should be
 # EXACTLY the same values.
 
 import sys

@@ -1,7 +1,7 @@
 # Author: Andrey Boytsov <andrey.boytsov@uni.lu> <andrey.m.boytsov@gmail.com>
 # License: BSD 3 clause (C) 2017
 
-# Fitting iris dataset (from sklearn) Generating embedding function and using it to visualize smooth transition from
+# Fitting iris dataset (from sklearn). Generating embedding function and using it to visualize smooth transition from
 # one value to another. Comparing to embedding_smooth, explores just few options, only embeddings.
 
 import sys
@@ -35,6 +35,16 @@ if __name__ == "__main__":
                                                   function_kwargs={'power' : 0.5})
     embedder4 = dTSNE.generate_embedding_function(embedding_function_type='weighted-inverse-distance',
                                                   function_kwargs={'power' : 2})
+    embedder5 = dTSNE.generate_embedding_function(embedding_function_type='weighted-inverse-distance',
+                                                  function_kwargs={'power' : 3})
+    # Regarding power behavior.
+    # Imagine point 1st or 99th point. Distance to one of points is very small, 1/d is very large, hence the weight
+    # is very large as well. If power<1 then for small distances (d**power) is larger than d, and 1/d**power is smaller
+    # than d. Weight gets smaller, and last points moves further away (notice - for 0.5 all points are clumped).
+    # For power > 1, for small distances (d**power) is smaller than d, and 1/d**power is larger, hence weights get
+    # larger and second point moves closer to one of corner points.
+    # Hence, too small power - all pts clumped in the middle, too high power - all points are closer to the ends,
+    # middle is empty. Need to find balance.
     start_index = 0
     end_index = 100
     steps = 100
@@ -43,6 +53,7 @@ if __name__ == "__main__":
     y3 = embedder2(Xtransition, verbose=2)
     y4 = embedder3(Xtransition, verbose=2)
     y5 = embedder4(Xtransition, verbose=2)
+    y6 = embedder5(Xtransition, verbose=2)
     color_list = ['blue','orange','green']
 
     plt.gcf().set_size_inches(10, 10)
@@ -51,6 +62,7 @@ if __name__ == "__main__":
     legend_list.append(str(start_index)+" to "+str(end_index)+" transition (weighted)")
     legend_list.append(str(start_index) + " to " + str(end_index) + " transition (weighted, power 0.5)")
     legend_list.append(str(start_index) + " to " + str(end_index) + " transition (weighted, power 2)")
+    legend_list.append(str(start_index) + " to " + str(end_index) + " transition (weighted, power 3)")
     for l in set(sorted(labels)):
         plt.scatter(y[labels == l, 0], y[labels == l, 1], c=color_list[l])
         legend_list.append(str(data.target_names[l]))
@@ -62,6 +74,8 @@ if __name__ == "__main__":
     plt.scatter(y4[:, 0], y4[:, 1], c='cyan',marker='x')
     plt.plot(y5[:, 0], y5[:, 1], color='brown')
     plt.scatter(y5[:, 0], y5[:, 1], c='brown',marker='x')
+    plt.plot(y6[:, 0], y6[:, 1], color='gray')
+    plt.scatter(y6[:, 0], y6[:, 1], c='gray',marker='x')
     plt.legend(legend_list)
     plt.xlim([np.min(y[:, 0])-20, np.max(y[:, 0])+20])
     plt.ylim([np.min(y[:, 1])-20, np.max(y[:, 1])+20])
