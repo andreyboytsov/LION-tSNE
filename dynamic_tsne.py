@@ -532,7 +532,7 @@ class DynamicTSNE:
         """
         Creates embedding function for learned TSNE embedding.
         :param embedding_function_type: Type of interpolator. Supported types:
-            'makeshift-lagrange-norm' (default, 'default', None) - makeshift interpolator. Works like multidimensional
+            'makeshift-lagrange-norm': makeshift interpolator. Works like multidimensional
             version of Lagrange multipliers, but uses distance instead of difference (to account for
             multidimensionality). Distance function is specified in the constructor (default - Euclidean).
             Interpolates each Y dimension separately. If you pass one of the known Xi (used for fitting), it is
@@ -544,15 +544,22 @@ class DynamicTSNE:
             corresponding Yi. Function_kwargs can contain 'power' - weights will be proportional to inverse
             distances^power (default - 1.0). Negative power is not recommended.
 
+            'linear' (default, 'default', None): Mutltidimensional piecewise-linear interpolation. Tesselates input space into simplices, then
+            interpolates linearly on each simplex. Interpolator is separate for each embedded dimension.
+
         :param function_kwargs: Parameters of embedding function (if applicable).
         :return: Embedding function, which accepts NxK array (K - original number of dimensions). Returns NxD embedded
         array (D is usually 2). Also accepts verbose parameter for logging level.
         """
+        #TODO Cache embedders if X did not change?
         if self.X is None:
             raise ValueError("No embedding found. Perhaps, model is not trained.")
 
+        if type(embedding_function_type) == str:
+            embedding_function_type = embedding_function_type.lower()
+
         if embedding_function_type is None or embedding_function_type == 'default':
-            embedding_function_type = 'makeshift-lagrange-norm'
+            embedding_function_type = 'linear'
 
         if function_kwargs is None:
             function_kwargs = {}
@@ -600,6 +607,21 @@ class DynamicTSNE:
                         weights = 1/distances**power
                         weights = weights/np.sum(weights)
                         y[k,:] = weights.dot(self.Y)
+                return y
+            return resulting_embedding_function
+        elif embedding_function_type == 'linear':
+            # TODO duplicate values of X ?
+            interpolator_list = list()
+            for d in range(self.n_embedded_dimensions):
+                interpolator_list.append(interpolate.NearestNDInterpolator(self.X, self.Y[:,d]))
+
+            def resulting_embedding_function(x, verbose=0):
+                if verbose >= 2:
+                    print("linear: Embedding all at once ")
+                x = np.array(x).reshape((-1,self.X.shape[1]))
+                y = np.zeros((len(x), self.n_embedded_dimensions))
+                for d in range(self.n_embedded_dimensions):
+                    y[:,d] = interpolator_list[d].__call__(x)
                 return y
 
             return resulting_embedding_function

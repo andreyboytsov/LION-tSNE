@@ -65,6 +65,7 @@ if __name__ == "__main__":
     plt.gcf().set_size_inches(10, 10)
     legend_list = list()
     color_list = ['blue', 'red', 'green', 'yellow', 'cyan', 'black', 'magenta', 'pink', 'brown', 'orange']
+    legend_list.append(str(start_index) + " to " + str(end_index) + " transition (weighted)")
     legend_list.append(str(start_index) + " to " + str(end_index) + " transition (weighted, power 0.5)")
     legend_list.append(str(start_index) + " to " + str(end_index) + " transition (weighted, power 2)")
     legend_list.append(str(start_index) + " to " + str(end_index) + " transition (weighted, power 3)")
@@ -85,6 +86,11 @@ if __name__ == "__main__":
     plt.scatter(y7[:, 0], y7[:, 1], c='gray',marker='x')
     plt.plot(y8[:, 0], y8[:, 1], color='blue')
     plt.scatter(y8[:, 0], y8[:, 1], c='blue',marker='x')
+    X_far = [100]*64
+    y_far = embedder2(X_far)
+    legend_list.append("Very far away X point will be put here")
+    plt.scatter(y_far[:, 0], y_far[:, 1], c='black', marker = 'X', s=50)
+    print("Y for far away X point: ", y_far)
     plt.legend(legend_list)
     plt.xlim([np.min(y[:, 0])-20, np.max(y[:, 0])+20])
     plt.ylim([np.min(y[:, 1])-20, np.max(y[:, 1])+20])
