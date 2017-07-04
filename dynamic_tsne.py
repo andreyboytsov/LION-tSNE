@@ -394,6 +394,20 @@ class DynamicTSNE:
         return self.fit(x, method=method, verbose=verbose, optimizer_kwargs=optimizer_kwargs,
                         random_seed=random_seed, from_scratch=from_scratch)
 
+    def incorporate(self, x, y):
+        """
+        Takes X and Y without any testing or consideration. Useful for debugging or for using already generated
+        visualization.
+        :param x: Points in original dimensions.
+        :param y: Same points in reduced dimensions.
+        
+        TODO P-matrix and sigmas are NOT recalculated. It might cause problems on transform.
+        """
+        # TODO see above.
+        self.X = x
+        self.Y = y
+        self.n_embedded_dimensions = y.shape[1]
+
     # TODO what if some new X coincide with existing X? Lock it?
     def transform(self, x, y=None, method='gd_momentum', verbose=0, keep_sigmas = True, use_sigmas=None,
                   optimizer_kwargs=None, random_seed=None):
@@ -613,12 +627,19 @@ class DynamicTSNE:
             # TODO duplicate values of X ?
             interpolator_list = list()
             for d in range(self.n_embedded_dimensions):
-                interpolator_list.append(interpolate.NearestNDInterpolator(self.X, self.Y[:,d]))
+                if self.X.shape[1] == 1:
+                    interpolator_list.append(
+                        interpolate.interp1d(self.X.reshape((-1, )), self.Y[:, d].reshape((-1, )),kind='linear'))
+                else:
+                    interpolator_list.append(interpolate.LinearNDInterpolator(self.X, self.Y[:,d]))
 
             def resulting_embedding_function(x, verbose=0):
                 if verbose >= 2:
                     print("linear: Embedding all at once ")
-                x = np.array(x).reshape((-1,self.X.shape[1]))
+                if self.X.shape[1] == 1:
+                    x = np.array(x).reshape((-1, ))
+                else:
+                    x = np.array(x).reshape((-1, self.X.shape[1]))
                 y = np.zeros((len(x), self.n_embedded_dimensions))
                 for d in range(self.n_embedded_dimensions):
                     y[:,d] = interpolator_list[d].__call__(x)
