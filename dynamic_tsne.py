@@ -409,7 +409,7 @@ class DynamicTSNE:
         self.n_embedded_dimensions = y.shape[1]
 
     # TODO what if some new X coincide with existing X? Lock it?
-    def transform(self, x, y=None, method='gd_momentum', verbose=0, keep_sigmas = True, use_sigmas=None,
+    def transform(self, x, y=None, method='gd_momentum', verbose=0, keep_sigmas=True, use_sigmas=None,
                   optimizer_kwargs=None, random_seed=None):
         """
         Transforms the data using existing embedding, but does not save those data for further reference.
@@ -558,8 +558,34 @@ class DynamicTSNE:
             corresponding Yi. Function_kwargs can contain 'power' - weights will be proportional to inverse
             distances^power (default - 1.0). Negative power is not recommended.
 
-            'linear' (default, 'default', None): Mutltidimensional piecewise-linear interpolation. Tesselates input space into simplices, then
-            interpolates linearly on each simplex. Interpolator is separate for each embedded dimension.
+            'linear': Mutltidimensional piecewise-linear interpolation. Tesselates input
+            space into simplices, then interpolates linearly on each simplex. Interpolator is separate for each
+            embedded dimension.
+
+            'lagrange-weighted-dimensions': Sum of Lagrange polynomials. For ech dimension of X and each dimension of
+            Y it builds Lagrange polynomial, s.t. f(X[i,j]) = W[j]*Y[i] (where i runs over points and j over input
+            dimensions). Weights are equal by default, but can be modified by setting function_kwargs['weights'].
+            Weights should sum up to one (or they will be renormalized).
+            Final interpolation is the sum of interpolators per each dimension of X. So, sum_j(f(X[i,j])) =
+            sum(W[j]*Y[i]) = Y[i], as required for interpolation.
+
+            WARNING: This method will fail if there are multiple X points, that have the same values along one of the
+            dimensions, but correspond to different Y values (can easily happen for binary attributes or one-hot
+            encoding).
+
+            'linear-weighted-dimensions': Sum of linear interpolators. See 'lagrange-weighted-dimensions', it works in a
+            similar manner.
+
+            'custom-per-dimension': Sum of custom interpolators. Interpolator class should be in
+            function_kwargs['interpolator']. There will be D*K objects of that class, where D is the number of embedded
+            dimensions and K is the number of original dimensions. Constructor for each object shoula accept 2 1D arrays
+            X and Y. Once constructed, interpolator will be invoked by __call__ function. Scipy 1D interpolators are
+            compatible. See 'lagrange-weighted-dimensions' for more details about dimensions and
+            weights. Additional keyword arguments to interpolator can be transferred in function_kwargs['interpolator'].
+
+            'rbf' (default, 'default', None): Interpolation based on radial basis functions. Use
+            function_kwargs['function'] to specify the function. Default - 'multiquadratic'. Fucntion_kwargs will be
+            directly passed to scipy.interpolate.Rbf initialization. See corresponding help for more available options.
 
         :param function_kwargs: Parameters of embedding function (if applicable).
         :return: Embedding function, which accepts NxK array (K - original number of dimensions). Returns NxD embedded
@@ -573,7 +599,7 @@ class DynamicTSNE:
             embedding_function_type = embedding_function_type.lower()
 
         if embedding_function_type is None or embedding_function_type == 'default':
-            embedding_function_type = 'linear'
+            embedding_function_type = 'rbf'
 
         if function_kwargs is None:
             function_kwargs = {}
@@ -629,9 +655,10 @@ class DynamicTSNE:
             for d in range(self.n_embedded_dimensions):
                 if self.X.shape[1] == 1:
                     interpolator_list.append(
-                        interpolate.interp1d(self.X.reshape((-1, )), self.Y[:, d].reshape((-1, )),kind='linear'))
+                        interpolate.interp1d(self.X.reshape((-1, )), self.Y[:, d].reshape((-1, )),kind='linear',
+                                             fill_value='extrapolate'))
                 else:
-                    interpolator_list.append(interpolate.LinearNDInterpolator(self.X, self.Y[:,d]))
+                    interpolator_list.append(interpolate.LinearNDInterpolator(self.X, self.Y[:, d]))
 
             def resulting_embedding_function(x, verbose=0):
                 if verbose >= 2:
@@ -641,8 +668,100 @@ class DynamicTSNE:
                 else:
                     x = np.array(x).reshape((-1, self.X.shape[1]))
                 y = np.zeros((len(x), self.n_embedded_dimensions))
-                for d in range(self.n_embedded_dimensions):
-                    y[:,d] = interpolator_list[d].__call__(x)
+                for dim in range(self.n_embedded_dimensions):
+                    y[:, dim] = interpolator_list[dim].__call__(x)
+                return y
+
+            return resulting_embedding_function
+        elif embedding_function_type == 'lagrange-per-dimension':
+            # TODO duplicate values of X ?
+            dimension_weights = function_kwargs.get('weights', np.array([1/self.X.shape[1]]*self.X.shape[1]))
+            dimension_weights = np.array(dimension_weights).reshape((-1,))
+            dimension_weights = dimension_weights / np.sum(dimension_weights)
+            interpolator_list_per_output_dimensions = list()
+            for d in range(self.n_embedded_dimensions):
+                this_dimension_interpolator_list = list()
+                for k in range(self.X.shape[1]):
+                    this_dimension_interpolator_list.append(interpolate.lagrange(self.X[:, k].reshape((-1,)),
+                                                                self.Y[:, d].reshape(-1,)*dimension_weights[k]))
+                interpolator_list_per_output_dimensions.append(this_dimension_interpolator_list)
+
+            def resulting_embedding_function(x, verbose=0):
+                x = np.array(x).reshape((-1, self.X.shape[1]))
+                y = np.zeros((len(x), self.n_embedded_dimensions))
+                if verbose >= 2:
+                    print("lagrange-per-dimension: Embedding all at once")
+                for dim in range(self.n_embedded_dimensions):
+                    for l in range(self.X.shape[1]):
+                        y[:, dim] += interpolator_list_per_output_dimensions[dim][l].__call__(x[:, l].reshape((-1,)))
+                return y
+
+            return resulting_embedding_function
+        elif embedding_function_type == 'linear-per-dimension':
+            # TODO duplicate values of X ?
+            dimension_weights = function_kwargs.get('weights', np.array([1 / self.X.shape[1]] * self.X.shape[1]))
+            dimension_weights = np.array(dimension_weights).reshape((-1,))
+            dimension_weights = dimension_weights / np.sum(dimension_weights)
+            interpolator_list_per_output_dimensions = list()
+            for d in range(self.n_embedded_dimensions):
+                this_dimension_interpolator_list = list()
+                for k in range(self.X.shape[1]):
+                    this_dimension_interpolator_list.append(interpolate.interp1d(self.X[:, k].reshape((-1,)),
+                            self.Y[:, d].reshape(-1,)*dimension_weights[k], kind='linear', fill_value='extrapolate'))
+                interpolator_list_per_output_dimensions.append(this_dimension_interpolator_list)
+
+            def resulting_embedding_function(x, verbose=0):
+                x = np.array(x).reshape((-1, self.X.shape[1]))
+                y = np.zeros((len(x), self.n_embedded_dimensions))
+                if verbose >= 2:
+                    print("linear-per-dimension: Embedding all at once")
+                for dim in range(self.n_embedded_dimensions):
+                    for l in range(self.X.shape[1]):
+                        y[:, dim] += interpolator_list_per_output_dimensions[dim][l].__call__(x[:, l].reshape((-1,)))
+                return y
+
+            return resulting_embedding_function
+        elif embedding_function_type == 'custom-per-dimension':
+            # TODO duplicate values of X ?
+            interpolator_class = function_kwargs['interpolator']
+            interpolator_kwargs = function_kwargs['interpolator-kwargs']
+            dimension_weights = function_kwargs.get('weights', np.array([1 / self.X.shape[1]] * self.X.shape[1]))
+            dimension_weights = np.array(dimension_weights).reshape((-1,))
+            dimension_weights = dimension_weights / np.sum(dimension_weights)
+            interpolator_list_per_output_dimensions = list()
+            for d in range(self.n_embedded_dimensions):
+                this_dimension_interpolator_list = list()
+                for k in range(self.X.shape[1]):
+                    this_dimension_interpolator_list.append(interpolator_class(self.X[:, k].reshape((-1,)),
+                                self.Y[:, d].reshape(-1,)*dimension_weights[k], **interpolator_kwargs))
+                interpolator_list_per_output_dimensions.append(this_dimension_interpolator_list)
+
+            def resulting_embedding_function(x, verbose=0):
+                x = np.array(x).reshape((-1, self.X.shape[1]))
+                y = np.zeros((len(x), self.n_embedded_dimensions))
+                if verbose >= 2:
+                    print("custom-per-dimension: Embedding all at once.")
+                for dim in range(self.n_embedded_dimensions):
+                    for l in range(self.X.shape[1]):
+                        y[:, dim] += interpolator_list_per_output_dimensions[dim][l].__call__(x[:, l].reshape((-1,)))
+                return y
+
+            return resulting_embedding_function
+        elif embedding_function_type == 'rbf':
+            interpolator_list_per_output_dimensions = list()
+            for d in range(self.n_embedded_dimensions):
+                arglist = list(self.X.T) # Each column separately as X
+                arglist.append(self.Y[:,d].reshape((-1,)))  # Column of Y dimension
+                interpolator_list_per_output_dimensions.append(interpolate.Rbf(*arglist, **function_kwargs))
+
+            def resulting_embedding_function(x, verbose=0):
+                x = np.array(x).reshape((-1, self.X.shape[1]))
+                called_arglist = list(x.T)  # Each column separately as X
+                y = np.zeros((len(x), self.n_embedded_dimensions))
+                if verbose >= 2:
+                    print("RBF: Embedding all at once.")
+                for dim in range(self.n_embedded_dimensions):
+                    y[:, dim] = interpolator_list_per_output_dimensions[dim].__call__(*called_arglist)
                 return y
 
             return resulting_embedding_function

@@ -7,8 +7,6 @@ Available under 3-clause BSD license.
 Uses some gradient descent code from sklearn package (which is also avaiable under
 3-clause BSD license).
 
-Some examples require numpy 1.13
-
 References:
 
 [1] L.J.P. van der Maaten and G.E. Hinton. Visualizing High-Dimensional Data Using t-SNE. Journal of Machine Learning

@@ -22,12 +22,12 @@ if __name__ == "__main__":
     # Embedding function requires unique arrays.
     # Well, embedding fuction can protect from it, but still we can get some confusion in mean square error, if it
     # "chooses" different sample
-    un_array, un_idx = np.unique(X, axis=0, return_index=True)
+    temp = np.ascontiguousarray(X).view(np.dtype((np.void, X.dtype.itemsize * X.shape[1])))
+    _, un_idx = np.unique(temp, return_index=True)
     X = X[un_idx, :]
     labels = labels[un_idx]
 
     dTSNE = dynamic_tsne.DynamicTSNE(perplexity=20)
-    # Small dataset. Iterations are very fast, we can afford more
     y = dTSNE.fit(X, verbose=2, optimizer_kwargs={'momentum': 0.8, 'n_iter': 1000}, random_seed=1)
     embedder2 = dTSNE.generate_embedding_function(embedding_function_type='weighted-inverse-distance')
     embedder3 = dTSNE.generate_embedding_function(embedding_function_type='weighted-inverse-distance',

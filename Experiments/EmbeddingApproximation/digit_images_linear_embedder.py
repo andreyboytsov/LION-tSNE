@@ -22,7 +22,8 @@ if __name__ == "__main__":
     # Embedding function requires unique arrays.
     # Well, embedding fuction can protect from it, but still we can get some confusion in mean square error, if it
     # "chooses" different sample
-    un_array, un_idx = np.unique(X, axis=0, return_index=True)
+    temp = np.ascontiguousarray(X).view(np.dtype((np.void, X.dtype.itemsize * X.shape[1])))
+    _, un_idx = np.unique(temp, return_index=True)
     X = X[un_idx, :]
     labels = labels[un_idx]
 
