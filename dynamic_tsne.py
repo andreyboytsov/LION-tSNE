@@ -584,7 +584,7 @@ class DynamicTSNE:
             weights. Additional keyword arguments to interpolator can be transferred in function_kwargs['interpolator'].
 
             'rbf' (default, 'default', None): Interpolation based on radial basis functions. Use
-            function_kwargs['function'] to specify the function. Default - 'multiquadratic'. Fucntion_kwargs will be
+            function_kwargs['function'] to specify the function. Default - 'multiquadric'. Fucntion_kwargs will be
             directly passed to scipy.interpolate.Rbf initialization. See corresponding help for more available options.
 
         :param function_kwargs: Parameters of embedding function (if applicable).
