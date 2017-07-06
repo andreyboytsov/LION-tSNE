@@ -553,10 +553,10 @@ class DynamicTSNE:
             guaranteed to return corresponding Yi. If there are 2 similar fitted X, that correspond to different Ys,
             any Y can be picked. Smooth, if distance function is smooth (looks like, but I need to double-check).
 
-            'weighted-inverse-distance': weighted average of Yi-s, where weights are inversely proportional to distance
-            between X and Xi sample. If you pass one of the known Xi (used for fitting), it is guaranteed to return
-            corresponding Yi. Function_kwargs can contain 'power' - weights will be proportional to inverse
-            distances^power (default - 1.0). Negative power is not recommended.
+            'idw' or 'weighted-inverse-distance' or 'inverse-distance-weighted': weighted average of Yi-s, where weights
+            are inversely proportional to distance between X and Xi sample. If you pass one of the known Xi (used for
+            fitting), it is guaranteed to return corresponding Yi. Function_kwargs can contain 'power' - weights will
+            be proportional to inverse distances^power (default - 1.0). Negative power is not recommended.
 
             'linear': Mutltidimensional piecewise-linear interpolation. Tesselates input
             space into simplices, then interpolates linearly on each simplex. Interpolator is separate for each
@@ -624,7 +624,9 @@ class DynamicTSNE:
                 return y
 
             return resulting_embedding_function
-        elif embedding_function_type == 'weighted-inverse-distance':
+        elif embedding_function_type == 'weighted-inverse-distance' or \
+             embedding_function_type == 'idw' or\
+             embedding_function_type == 'inverse-distance-weighted':
             power = function_kwargs.get('power', 1.0)
 
             def resulting_embedding_function(x, verbose=0):
