@@ -329,7 +329,8 @@ class DynamicTSNE:
                     d[i,j] = self.distance_function(x[i,:], x[j,:])
             return d
 
-    def fit(self, x, method='gd_momentum', verbose=0, optimizer_kwargs=None, random_seed=None, from_scratch=False):
+    def fit(self, x, method='gd_momentum', verbose=0, optimizer_kwargs=None, random_seed=None, from_scratch=False,
+            starting_y=None):
         """
         :param x: NxK array. N - number of points, K - original number of dimensions
         :param method: Method for finding minimum KL divergence. Supported methods:
@@ -347,6 +348,7 @@ class DynamicTSNE:
         :param random_seed: Random seed. Use for reproducibility.
         :param from_scratch: If there is already some fitted data, should we start over (True), or add this data to
         existing (False)? Default - False TODO: not used at the moment. Treated as True.
+        :param starting_y: start with particular embedded representation.
         :return: Embedded representation of x.
         """
         # TODO: what if those are additional X? Use another method or field
@@ -354,6 +356,7 @@ class DynamicTSNE:
             np.random.seed(random_seed)
         if optimizer_kwargs is None:
             optimizer_kwargs = {}
+
         optimizer_kwargs = optimizer_kwargs.copy() # We don't need to change it
         self.X = x
         d = self.get_distance_matrix(self.X)
@@ -368,7 +371,9 @@ class DynamicTSNE:
             early_exaggeration = optimizer_kwargs.pop('early_exaggeration', 4.0)
             early_exaggeration_iters = optimizer_kwargs.pop('early_exaggeration_iters', 100)
 
-            self.Y = np.random.randn(d.shape[0] * self.n_embedded_dimensions)
+            if starting_y is None:
+                starting_y = np.random.randn(d.shape[0] * self.n_embedded_dimensions)
+            self.Y = starting_y.reshape((-1,))
             it = 0
             if early_exaggeration is not None:
                 self.P_matrix = self.P_matrix * early_exaggeration
@@ -378,7 +383,7 @@ class DynamicTSNE:
                     objective=lambda t: kl_divergence_and_gradient(t, self.P_matrix, self.n_embedded_dimensions),
                     p0=self.Y, it=0, verbose=verbose, **optimizer_kwargs_no_iters)
                 self.P_matrix = self.P_matrix / early_exaggeration
-                if verbose>=2:
+                if verbose >= 2:
                     print("Early exaggeration is over")
 
             self.Y, final_val, final_iter = _gradient_descent(
