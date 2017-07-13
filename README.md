@@ -1,4 +1,4 @@
-# LION-tSNE (Local Interpolation with Outlier detctioN)
+# LION-tSNE (Local Interpolation with Outlier detectioN)
 
 Extension of TSNE algorithm to incorporate new and changed data.
 
