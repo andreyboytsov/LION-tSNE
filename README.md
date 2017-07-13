@@ -1,7 +1,10 @@
-# DynamicTSNE
-Improvements of TSNE algorithm, mainly to incorporate data that appear or change over time.
+# LION-tSNE (Local Interpolation with Outlier detctioN)
+
+Extension of TSNE algorithm to incorporate new and changed data.
 
 Work in progress
+
+Note: it was previously called DynamicTSNE, but then I found out that this name is already used. There is still a lot of renaming to be done for classes, files, etc.
 
 Available under 3-clause BSD license.
 Uses some gradient descent code from sklearn package (which is also avaiable under
