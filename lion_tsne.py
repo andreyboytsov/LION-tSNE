@@ -1141,7 +1141,7 @@ class LionTSNE:
                     random_dist = np.random.uniform(low=0, high=radius_y_close)
                     random_angle = np.random.uniform(low=0,high=2*np.pi)
                     y_result[j, :] = self.Y[single_neighbor_index, :]
-                    y_result[j, 0] += random_dist*np.cos(random_angle) # Considering 0 is X. DOes not matter, really
+                    y_result[j, 0] += random_dist*np.cos(random_angle) # Considering 0 is X. Does not matter, really
                     y_result[j, 1] += random_dist*np.sin(random_angle)
 
             return y_result
