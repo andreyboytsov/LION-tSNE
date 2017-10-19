@@ -10,14 +10,14 @@ import matplotlib.pyplot as plt
 
 # Importing from parent directory
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
-import dynamic_tsne
+import lion_tsne
 
 if __name__ == "__main__":
     data = load_digits()
     X = data.images.reshape((-1, 64)) # 8x8 image to 64-length vector
     labels = data.target
 
-    dTSNE = dynamic_tsne.DynamicTSNE(perplexity=20)
+    dTSNE = lion_tsne.LionTSNE(perplexity=20)
     y = dTSNE.fit(X, verbose=2, optimizer_kwargs={'momentum': 0.8}, random_seed=0)
 
     plt.gcf().set_size_inches(10, 10)

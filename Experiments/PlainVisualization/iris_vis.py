@@ -10,14 +10,14 @@ import matplotlib.pyplot as plt
 
 # Importing from parent directory
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
-import dynamic_tsne
+import lion_tsne
 
 if __name__ == "__main__":
     data = load_iris()
     X = data.data
     labels = data.target
 
-    dTSNE = dynamic_tsne.DynamicTSNE(perplexity=20)
+    dTSNE = lion_tsne.LionTSNE(perplexity=20)
     # Small dataset. Iterations are very fast, we can afford more
     y = dTSNE.fit(X, verbose=2, optimizer_kwargs={'momentum': 0.8, 'n_iter' : 3000}, random_seed=1)
 

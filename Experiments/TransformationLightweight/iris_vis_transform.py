@@ -12,8 +12,9 @@ import matplotlib.pyplot as plt
 
 # Importing from parent directory
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
-import lion_tsne
+import lion_tsne_lightweight
 import numpy as np
+from sklearn.manifold import TSNE
 
 if __name__ == "__main__":
     data = load_iris()
@@ -27,19 +28,13 @@ if __name__ == "__main__":
     labels = all_labels[:len(all_labels)//2]
     labels2 = all_labels[len(all_labels)//2:]
 
-    dTSNE = lion_tsne.LionTSNE(perplexity=20)
-    # Small dataset. Iterations are very fast, we can afford more
-    y = dTSNE.fit(X, verbose=2, optimizer_kwargs={'momentum': 0.8, 'n_iter' : 3000}, random_seed=1)
-    # Option 1. Start with random values
-    # starting_y = None
-    # Option 2. Start with Ys that corresponded to closest original Xs
-    # starting_y = 'closest'
-    # Option 3. Start with a center of class. Only for testing, it won't be available in training.
-    starting_y = np.zeros((len(labels2), 2))
-    for i in range(len(starting_y)):
-        starting_y[i,:] = np.mean(y[labels == labels2[i], :], axis=0)
-    y2 = dTSNE.transform(X_for_transformation, y=starting_y, verbose=2,
-                         optimizer_kwargs={'momentum': 0.8, 'n_iter': 3000}, random_seed=1)
+    norm_TSNE = TSNE(perplexity=20)
+    y = norm_TSNE.fit_transform(X)
+    lwTSNE = lion_tsne_lightweight.LionTSNELightweight(X,y)
+
+    embedder = lwTSNE.generate_lion_tsne_embedder(verbose=2, random_state=0, function_kwargs=
+        {'y_safety_margin':0, 'radius_x_percentile':100, 'radius_y_percentile':100})
+    y2 = embedder(X_for_transformation)
 
     color_list = ['blue','orange','green']
 
@@ -52,7 +47,7 @@ if __name__ == "__main__":
         plt.scatter(y2[labels2 == l, 0], y2[labels2 == l, 1], c=color_list[l], marker='v')
         legend_list.append(str(data.target_names[l])+" embedded")
     # TODO almost worked, but there were 3 outliers. Need to investigate.
-    plt.xlim([-800, 1300])
-    plt.ylim([-100, 300])
+    #plt.xlim([-800, 1300])
+    #plt.ylim([-100, 300])
     plt.legend(legend_list)
     plt.show()
