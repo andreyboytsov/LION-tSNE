@@ -14,11 +14,19 @@
 # volume 15, pages 833-840, Cambridge, MA, USA, 2002. The MIT Press.
 
 import numpy as np
-from scipy.spatial import distance
-import itertools
 
 # TODO get machine precision instead ?
 EPS = 1e-12  # Precision level
+
+def product(*args):
+    values = map(tuple, args)
+    res = [[]]
+    for v in values:
+        res = [x+[y] for x in res for y in v]
+    final_res = list()
+    for prod in res:
+        final_res.append(tuple(prod))
+    return final_res
 
 
 class LionTSNELightweight:
@@ -151,7 +159,7 @@ class LionTSNELightweight:
         if 'radius_y_percentile' in function_kwargs or 'radius_y' not in function_kwargs or \
                         'radius_y_close_percentile' in function_kwargs or 'radius_y_close' not in function_kwargs:
             # In that case we will need those things
-            y_distance_matrix = distance.squareform(distance.pdist(self.Y))
+            y_distance_matrix = self.get_distance_matrix(self.Y)
             np.fill_diagonal(y_distance_matrix, np.inf)  # We are not interested in distance to itself
             nn_y_distance = np.min(y_distance_matrix, axis=1)  # Any axis will do
 
@@ -208,7 +216,7 @@ class LionTSNELightweight:
                 print('Adjusted cell sizes: ', adjusted_cell_sizes)
             # How many outer layers did we have to add. For now - none.
             # added_outer_layers = 0 #We do it locally, cause runs are independent
-            cell_list = list(itertools.product(*[list(range(i)) for i in original_cell_nums]))
+            cell_list = list(product(*[list(range(i)) for i in original_cell_nums]))
             if verbose >= 3:
                 print('Cell list: ', cell_list)
             for cell in cell_list:
@@ -364,7 +372,7 @@ class LionTSNELightweight:
                                              for k in np.arange(i + 1, self.Y.shape[1])]
                             if verbose >= 3:
                                 print("For products (3): ", prods)
-                            partial_new_cells = list(itertools.product(*prods))
+                            partial_new_cells = list(product(*prods))
                             if verbose >= 3:
                                 print("Partial new cells: ", partial_new_cells)
                             new_available_cells.extend(partial_new_cells)
